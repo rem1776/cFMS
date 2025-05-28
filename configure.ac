@@ -38,11 +38,15 @@ AC_CANONICAL_TARGET
 
 AC_CONFIG_MACRO_DIR([m4])
 
+# needed for FMS subpackage
+AC_CONFIG_AUX_DIR([.])
+
 AM_INIT_AUTOMAKE([foreign dist-zip subdir-objects])
 
 # Set up libtool.
 LT_PREREQ([2.4])
 LT_INIT()
+
 
 # If building on a Cray PE system, check if CRAYPE_LINK_TYPE is 'static'.  If it
 # is, then disable building shared libraries.  Note, the user can still override
@@ -74,30 +78,6 @@ AC_ARG_ENABLE([8byte-int],
 AS_IF([test ${enable_8byte_int:-no} = yes],
   [enable_8byte_int=yes],
   [enable_8byte_int=no])
-
-# user enabled testing with input files
-AC_MSG_CHECKING([whether to enable tests with input files])
-AC_ARG_ENABLE([test-input],
-            [AS_HELP_STRING([--enable-test-input="path/to/input"],
-            [Enable tests using input netcdf files, if present in the given full directory.])])
-AC_MSG_RESULT([$enable_test_input])
-
-# require path to be given
-AS_IF([test "x$enable_test_input" = "xyes"],
-    [AC_MSG_ERROR([Test input enabled, but no directory given with --enable-test-input=/path])],
-    [AS_IF([test "x$enable_test_input" != "xno"],
-        [TEST_INPUT_PATH="$enable_test_input"],[])]
-)
-
-# if set, check directory exists
-AS_IF([test "$TEST_INPUT_PATH" = ""],
-  [],
-  [AS_IF([test -d $TEST_INPUT_PATH],[],
-    [AC_MSG_ERROR([Test input enabled, but directory $TEST_INPUT_PATH not found]) ]
-  )])
-
-# substitute path for input
-AC_SUBST([TEST_INPUT_PATH])
 
 # Does the user want to build documentation?
 AC_MSG_CHECKING([whether documentation should be built (requires doxygen)])
@@ -199,6 +179,18 @@ GX_FC_CHECK_MOD([netcdf], [], [], [AC_MSG_ERROR([Can't find the netCDF Fortran m
 GX_FORTRAN_SEARCH_LIBS([nf90_create], [netcdff], [use netcdf], [iret = nf90_create('foo.nc', 1, ncid)], [],
   [AC_MSG_ERROR([Can't find the netCDF Fortran library.  Set LDFLAGS/LIBS])])
 
+
+# Add FMS as a subpackage and set flags for the subdirectories to find it (builds on top of FMS source)
+AC_MSG_CHECKING([if FMS library is available])
+GX_LIB_FMS()
+AC_MSG_RESULT([$with_fms])
+if test "x$with_fms" = xno; then
+  AC_CONFIG_SUBDIRS([FMS])
+  AC_SUBST([LIBFMS_FCFLAGS], ["-I\$(abs_top_builddir)/FMS/include -I\$(abs_top_builddir)/FMS/.mods"])
+  AC_SUBST([LIBFMS_LIBS], ["-L\$(abs_top_builddir)/FMS/libFMS -lFMS"])
+fi
+AM_CONDITIONAL(BUILD_FMS, [test "x$with_fms" = xno])
+
 # Check if we get a floating point exception with netcdf
 # this will only get triggered if you have FPE traps enabled via FCFLAGS
 AC_MSG_CHECKING([if HDF5 version causes floating point exceptions with set flags])
@@ -212,6 +204,7 @@ if test $hdf5_fpe_bug = yes; then
   AC_MSG_ERROR([The HDF5 version used to build netcdf is incompatible with the set FCFLAGS. dnl
 NetCDF must be built with a HDF5 version other than 1.14.3 to support floating point exception traps.])
 fi
+
 
 
 # Check if Fortran compiler has Cray pointer support
@@ -235,7 +228,7 @@ fi
 
 # Set any required compile flags.  This will not be done if the user wants to
 # define all their own flags.
-if test $enable_setting_flags = yes; then
+if test "$enable_setting_flags" = yes; then
   # Make sure the compiler is seeing this as free-formatted, not
   # fixed-formatted, fortran code.
   AC_FC_FREEFORM()
@@ -249,7 +242,7 @@ if test $enable_setting_flags = yes; then
   fi
 
   # Builds with C data types
-  if test $enable_portable_kinds = yes; then
+  if test "$enable_portable_kinds" = yes; then
     AC_DEFINE([PORTABLE_KINDS], [1], [Set to define KIND parameters to iso_c_binding KIND parameters])
   fi
 
@@ -268,7 +261,7 @@ if test $enable_setting_flags = yes; then
   fi
 
   # Add code coverage flags
-  if test $enable_code_coverage = yes; then
+  if test "$enable_code_coverage" = yes; then
     FCFLAGS="$FCFLAGS -prof-gen=srcpos"
     CFLAGS="$CFLAGS -prof-gen=srcpos"
   fi
